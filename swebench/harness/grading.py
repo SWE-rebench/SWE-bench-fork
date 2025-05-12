@@ -47,8 +47,8 @@ def get_logs_eval(test_spec: TestSpec, log_fp: str) -> tuple[dict[str, str], boo
     """
     repo = test_spec.repo
     version = test_spec.version
-    log_parser = MAP_REPO_TO_PARSER[repo]
-    test_cmd = MAP_REPO_VERSION_TO_SPECS[repo][version]["test_cmd"]
+    log_parser = MAP_REPO_TO_PARSER[repo] if repo in MAP_REPO_TO_PARSER else MAP_REPO_TO_PARSER[test_spec.install_config['log_parser']]
+    test_cmd = MAP_REPO_VERSION_TO_SPECS[repo][version]["test_cmd"] if repo in MAP_REPO_VERSION_TO_SPECS else test_spec.install_config['test_cmd']
     if isinstance(test_cmd, list):
         test_cmd = test_cmd[-1]
 

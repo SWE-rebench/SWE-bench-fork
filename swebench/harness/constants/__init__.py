@@ -1,6 +1,7 @@
 from enum import Enum
 from pathlib import Path
 from typing import TypedDict
+from collections import defaultdict
 
 from swebench.harness.constants.c import *
 from swebench.harness.constants.go import *
@@ -34,6 +35,7 @@ class SWEbenchInstance(TypedDict):
     FAIL_TO_PASS: str
     PASS_TO_PASS: str
     environment_setup_commit: str
+    install_config: dict | None
 
 
 # Constants - Test Types, Statuses, Commands
@@ -155,7 +157,9 @@ MAP_REPO_TO_INSTALL = {
     **MAP_REPO_TO_INSTALL_RUST,
 }
 
-MAP_REPO_TO_EXT = {
+MAP_REPO_TO_EXT = defaultdict(lambda: "py")
+
+MAP_REPO_TO_EXT.update(
     **{k: "c" for k in MAP_REPO_VERSION_TO_SPECS_C.keys()},
     **{k: "go" for k in MAP_REPO_VERSION_TO_SPECS_GO.keys()},
     **{k: "java" for k in MAP_REPO_VERSION_TO_SPECS_JAVA.keys()},
@@ -164,7 +168,7 @@ MAP_REPO_TO_EXT = {
     **{k: "py" for k in MAP_REPO_VERSION_TO_SPECS_PY.keys()},
     **{k: "rb" for k in MAP_REPO_VERSION_TO_SPECS_RUBY.keys()},
     **{k: "rs" for k in MAP_REPO_VERSION_TO_SPECS_RUST.keys()},
-}
+)
 
 LATEST = "latest"
 USE_X86 = USE_X86_PY

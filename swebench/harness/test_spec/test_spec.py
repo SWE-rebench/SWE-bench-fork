@@ -47,6 +47,7 @@ class TestSpec:
     base_image_tag: str = LATEST
     env_image_tag: str = LATEST
     instance_image_tag: str = LATEST
+    install_config: dict | None = None
 
     @property
     def setup_env_script(self):
@@ -206,7 +207,10 @@ def make_test_spec(
 
     env_name = "testbed"
     repo_directory = f"/{env_name}"
-    specs = MAP_REPO_VERSION_TO_SPECS[repo][version]
+    if 'install_config' in instance:
+        specs = instance['install_config']
+    else:
+        specs = MAP_REPO_VERSION_TO_SPECS[repo][version]
     docker_specs = specs.get("docker_specs", {})
 
     repo_script_list = make_repo_script_list(
@@ -238,4 +242,5 @@ def make_test_spec(
         base_image_tag=base_image_tag,
         env_image_tag=env_image_tag,
         instance_image_tag=instance_image_tag,
+        install_config=specs
     )

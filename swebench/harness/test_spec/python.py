@@ -23,8 +23,11 @@ HEADERS = {
 
 
 @cache
-def get_environment_yml_by_commit(repo: str, commit: str, env_name: str) -> str:
-    for req_path in MAP_REPO_TO_ENV_YML_PATHS[repo]:
+def get_environment_yml_by_commit(repo: str, commit: str, env_name: str, reqs_paths = None) -> str:
+    if reqs_paths is None:
+        reqs_paths = MAP_REPO_TO_REQS_PATHS[repo]
+
+    for req_path in reqs_paths:
         reqs_url = posixpath.join(SWE_BENCH_URL_RAW, repo, commit, req_path)
         reqs = requests.get(reqs_url, headers=HEADERS)
         if reqs.status_code == 200:
@@ -46,7 +49,7 @@ def get_environment_yml_by_commit(repo: str, commit: str, env_name: str) -> str:
     return "\n".join(cleaned)
 
 
-def get_environment_yml(instance: SWEbenchInstance, env_name: str) -> str:
+def get_environment_yml(instance: SWEbenchInstance, env_name: str, reqs_paths = None) -> str:
     """
     Get environment.yml for given task instance
 
@@ -63,20 +66,24 @@ def get_environment_yml(instance: SWEbenchInstance, env_name: str) -> str:
         else instance["base_commit"]
     )
 
-    return get_environment_yml_by_commit(instance["repo"], commit, env_name)
+    return get_environment_yml_by_commit(instance["repo"], commit, env_name, reqs_paths)
 
 
 @cache
-def get_requirements_by_commit(repo: str, commit: str) -> str:
-    for req_path in MAP_REPO_TO_REQS_PATHS[repo]:
+def get_requirements_by_commit(repo: str, commit: str, reqs_paths = None) -> str:
+    if reqs_paths is None:
+        reqs_paths = MAP_REPO_TO_REQS_PATHS[repo]
+
+    for req_path in reqs_paths:
         reqs_url = posixpath.join(SWE_BENCH_URL_RAW, repo, commit, req_path)
         reqs = requests.get(reqs_url, headers=HEADERS)
         if reqs.status_code == 200:
             break
     else:
-        raise ValueError(
-            f"Could not find requirements.txt at paths {MAP_REPO_TO_REQS_PATHS[repo]} for repo {repo} at commit {commit}"
-        )
+        # raise ValueError(
+        #     f"Could not find requirements.txt at paths {MAP_REPO_TO_REQS_PATHS[repo]} for repo {repo} at commit {commit}"
+        # )
+        return ""
 
     lines = reqs.text
     original_req = []
@@ -128,8 +135,11 @@ def get_requirements(instance: SWEbenchInstance) -> str:
         if "environment_setup_commit" in instance
         else instance["base_commit"]
     )
+    reqs_paths = None
+    if "install_config" in instance:
+        reqs_paths = instance["install_config"].get("reqs_path", None)
 
-    return get_requirements_by_commit(instance["repo"], commit)
+    return get_requirements_by_commit(instance["repo"], commit, tuple(reqs_paths))
 
 
 def get_test_directives(instance: SWEbenchInstance) -> list:
@@ -189,11 +199,11 @@ def make_repo_script_list_py(
         setup_commands.append(MAP_REPO_TO_INSTALL[repo])
 
     # Run pre-install set up if provided
-    if "pre_install" in specs:
+    if specs.get("pre_install"):
         for pre_install in specs["pre_install"]:
             setup_commands.append(pre_install)
 
-    if "install" in specs:
+    if specs.get("install"):
         setup_commands.append(specs["install"])
 
     # If the setup modifies the repository in any way, it can be 
@@ -238,7 +248,10 @@ def make_env_script_list_py(instance, specs, env_name) -> list:
         reqs_commands.append(f"rm {path_to_reqs}")
     elif pkgs == "environment.yml":
         # Create environment from yml
-        reqs = get_environment_yml(instance, env_name)
+        reqs_paths = None
+        if specs.get("env_yml_path"):
+            reqs_paths = tuple(specs["env_yml_path"])
+        reqs = get_environment_yml(instance, env_name, reqs_paths)
         path_to_reqs = "environment.yml"
         reqs_commands.append(
             f"cat <<'{HEREDOC_DELIMITER}' > {path_to_reqs}\n{reqs}\n{HEREDOC_DELIMITER}"
@@ -271,7 +284,7 @@ def make_env_script_list_py(instance, specs, env_name) -> list:
     reqs_commands.append(f"conda activate {env_name}")
 
     # Install additional packages if specified
-    if "pip_packages" in specs:
+    if specs.get("pip_packages"):
         pip_packages = " ".join(specs["pip_packages"])
         cmd = f"python -m pip install {pip_packages}"
         reqs_commands.append(cmd)
@@ -291,14 +304,18 @@ def make_eval_script_list_py(
     apply_test_patch_command = (
         f"git apply -v - <<'{HEREDOC_DELIMITER}'\n{test_patch}\n{HEREDOC_DELIMITER}"
     )
-    test_command = " ".join(
-        [
-            MAP_REPO_VERSION_TO_SPECS[instance["repo"]][instance["version"]][
-                "test_cmd"
-            ],
-            *get_test_directives(instance),
+    if "test_cmd" in specs:
+        test_cmd = specs["test_cmd"]
+    else:
+        test_cmd = MAP_REPO_VERSION_TO_SPECS[instance["repo"]][instance["version"]][
+            "test_cmd"
         ]
-    )
+    test_command = " ".join(
+            [
+                test_cmd,
+                *get_test_directives(instance),
+            ]
+        )
     eval_commands = [
         "source /opt/miniconda3/bin/activate",
         f"conda activate {env_name}",

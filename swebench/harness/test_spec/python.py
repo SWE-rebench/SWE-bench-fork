@@ -72,7 +72,7 @@ def get_environment_yml(instance: SWEbenchInstance, env_name: str, reqs_paths = 
 @cache
 def get_requirements_by_commit(repo: str, commit: str, reqs_paths = None) -> str:
     if reqs_paths is None:
-        reqs_paths = MAP_REPO_TO_REQS_PATHS[repo]
+        reqs_paths = MAP_REPO_TO_REQS_PATHS.get(repo, [])
 
     for req_path in reqs_paths:
         reqs_url = posixpath.join(SWE_BENCH_URL_RAW, repo, commit, req_path)
@@ -136,10 +136,10 @@ def get_requirements(instance: SWEbenchInstance) -> str:
         else instance["base_commit"]
     )
     reqs_paths = None
-    if "install_config" in instance:
-        reqs_paths = instance["install_config"].get("reqs_path", None)
+    if "install_config" in instance and instance["install_config"].get("reqs_path") is not None:
+        reqs_paths = tuple(instance["install_config"].get("reqs_path", []))
 
-    return get_requirements_by_commit(instance["repo"], commit, tuple(reqs_paths))
+    return get_requirements_by_commit(instance["repo"], commit, reqs_paths)
 
 
 def get_test_directives(instance: SWEbenchInstance) -> list:

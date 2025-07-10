@@ -2,6 +2,19 @@
 
 This fork of SWE-bench includes updates necessary for running SWE-rebench files.
 
+
+To run a sample evaluation with pre-built Docker images for SWE-rebench-leaderboard use the following command:
+
+```bash
+python -m swebench.harness.run_evaluation \
+    --dataset_name nebius/SWE-rebench-leaderboard \
+    --predictions_path gold \
+    --instance_ids biopython__biopython-5005 \
+    --cache_level instance \
+    --run_id validate-gold \
+    --namespace "swerebench"
+```
+
 To run a sample evaluation, use the following command:
 
 ```bash

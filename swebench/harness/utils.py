@@ -3,6 +3,8 @@ import re
 import requests
 import traceback
 
+from packaging.version import parse as parse_version
+
 from argparse import ArgumentTypeError
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datasets import Dataset, load_dataset, load_from_disk
@@ -121,6 +123,30 @@ def run_sequential(func, args_list):
     return succeeded, failed
 
 
+def fix_python_version(python_version: str) -> str:
+    # python < lowest_supported_python is not supported by conda,
+    # we have to use a newer version
+    lowest_supported_python = "3.6"
+    return (
+        python_version
+        if parse_version(python_version) >= parse_version(lowest_supported_python)
+        else lowest_supported_python
+    )
+
+
+def _clean_install_config(inst: dict) -> dict:
+    new_inst = dict(inst)
+    ic = new_inst.get("install_config")
+    if isinstance(ic, dict):
+        cleaned = {k: v for k, v in ic.items() if v is not None}
+
+        py_val = cleaned.get("python")
+        if isinstance(py_val, (str, int, float)):
+            cleaned["python"] = fix_python_version(str(py_val))
+        new_inst["install_config"] = cleaned
+    return new_inst
+
+
 def load_swebench_dataset(
     name="SWE-bench/SWE-bench", split="test", instance_ids=None
 ) -> list[SWEbenchInstance]:
@@ -165,7 +191,9 @@ def load_swebench_dataset(
             for instance in dataset
             if instance[KEY_INSTANCE_ID] in instance_ids
         ]
-    return [cast(SWEbenchInstance, instance) for instance in dataset]
+
+    cleaned = [_clean_install_config(instance) for instance in dataset]
+    return [cast(SWEbenchInstance, instance) for instance in cleaned]
 
 
 ### MARK - Patch Correction

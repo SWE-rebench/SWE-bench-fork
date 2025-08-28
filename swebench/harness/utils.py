@@ -144,6 +144,7 @@ def _clean_install_config(inst: dict) -> dict:
         if isinstance(py_val, (str, int, float)):
             cleaned["python"] = fix_python_version(str(py_val))
         new_inst["install_config"] = cleaned
+        new_inst['environment_setup_commit'] = new_inst['base_commit']
     return new_inst
 
 

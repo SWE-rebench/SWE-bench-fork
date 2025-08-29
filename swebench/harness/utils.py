@@ -143,6 +143,9 @@ def _clean_install_config(inst: dict) -> dict:
         py_val = cleaned.get("python")
         if isinstance(py_val, (str, int, float)):
             cleaned["python"] = fix_python_version(str(py_val))
+        if not cleaned.get('pre_install'):
+            cleaned['pre_install'] = []
+        cleaned['install'] = "LANG=C.UTF-8 LC_ALL=C.UTF-8 " + cleaned['install']
         new_inst["install_config"] = cleaned
         new_inst['environment_setup_commit'] = new_inst['base_commit']
     return new_inst

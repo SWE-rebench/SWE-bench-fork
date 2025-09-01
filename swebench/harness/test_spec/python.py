@@ -2,6 +2,9 @@ import os
 import posixpath
 import re
 import requests
+from collections import OrderedDict
+from unidiff import PatchSet
+from io import StringIO
 
 from swebench.harness.constants import (
     SWEbenchInstance,
@@ -71,6 +74,7 @@ def get_environment_yml(instance: SWEbenchInstance, env_name: str, reqs_paths = 
 
 @cache
 def get_requirements_by_commit(repo: str, commit: str, reqs_paths = None) -> str:
+    all_lines = []
     if reqs_paths is None:
         reqs_paths = MAP_REPO_TO_REQS_PATHS.get(repo, [])
 
@@ -78,22 +82,24 @@ def get_requirements_by_commit(repo: str, commit: str, reqs_paths = None) -> str
         reqs_url = posixpath.join(SWE_BENCH_URL_RAW, repo, commit, req_path)
         reqs = requests.get(reqs_url, headers=HEADERS)
         if reqs.status_code == 200:
-            break
-    else:
+            all_lines += reqs.text.split('\n')
+    # else:
         # raise ValueError(
         #     f"Could not find requirements.txt at paths {MAP_REPO_TO_REQS_PATHS[repo]} for repo {repo} at commit {commit}"
         # )
+        # return ""
+
+    if not all_lines:
         return ""
 
-    lines = reqs.text
     original_req = []
     additional_reqs = []
     req_dir = "/".join(req_path.split("/")[:-1])
     exclude_line = lambda line: any(
-        [line.strip().startswith(x) for x in ["-e .", "#", ".[test"]]
-    )
+        [line.strip().startswith(x) for x in ["-e .", "#", ".[test", "-c"]]
+    ) or line.strip() == "."
 
-    for line in lines.split("\n"):
+    for line in all_lines:
         if line.strip().startswith("-r"):
             # Handle recursive requirements
             file_name = line[len("-r") :].strip()
@@ -114,8 +120,17 @@ def get_requirements_by_commit(repo: str, commit: str, reqs_paths = None) -> str
                 original_req.append(line)
 
     # Combine all requirements into single text body
-    additional_reqs.append("\n".join(original_req))
-    all_reqs = "\n".join(additional_reqs)
+    get_package_name = lambda line: line.split("==")[0].split(">=")[0].split("<=")[0].strip()
+    original_req += additional_reqs
+
+    deduped = OrderedDict()
+    for line in original_req:
+        pkg = get_package_name(line)
+        if pkg and pkg not in deduped:
+            deduped[pkg] = line
+    original_req = list(deduped.values())
+
+    all_reqs = "\n".join(original_req)
 
     return all_reqs
 
@@ -141,8 +156,26 @@ def get_requirements(instance: SWEbenchInstance) -> str:
 
     return get_requirements_by_commit(instance["repo"], commit, reqs_paths)
 
+def get_changed_files(patch: str) -> list[str]:
+    """Extract changed or added filenames from a git patch, excluding deleted files."""
 
-def get_test_directives(instance: SWEbenchInstance) -> list:
+    files = []
+    patch_set: PatchSet = PatchSet(StringIO(patch))
+
+    for patched_file in patch_set:
+        # Skip deleted files
+        if not patched_file.is_removed_file:
+            files.append(patched_file.path)
+
+    return files
+
+
+def get_default_test_directives(test_patch: str) -> list[str]:
+    directives = get_changed_files(test_patch)
+    return [d for d in directives if not any(d.endswith(ext) for ext in NON_TEST_EXTS)]
+
+
+def get_test_directives(instance) -> list[str]:
     """
     Get test directives from the test_patch of a task instance
 
@@ -151,17 +184,25 @@ def get_test_directives(instance: SWEbenchInstance) -> list:
     Returns:
         directives (list): List of test directives
     """
-    # For seq2seq code repos, testing command is fixed
-    if instance["repo"] == "swe-bench/humaneval":
+    # HumanEvalFix: For seq2seq code repos, testing command is fixed
+    if any(
+        x == instance["repo"]
+        for x in ["swe-bench/humaneval", "swe-bench/humanevalfix-python"]
+    ):
         return ["test.py"]
+    if any(
+        x == instance["repo"]
+        for x in ["swe-bench/humanevalfix-go", "swe-bench/humanevalfix-java"]
+    ):
+        return []
+    if instance["repo"] == "swe-bench/humanevalfix-js":
+        return ["test.js"]
+    if instance["repo"] == "nebius/nebo":
+        return [""]
 
     # Get test directives from test patch and remove non-test files
-    diff_pat = r"diff --git a/.* b/(.*)"
     test_patch = instance["test_patch"]
-    directives = re.findall(diff_pat, test_patch)
-    directives = [
-        d for d in directives if not any(d.endswith(ext) for ext in NON_TEST_EXTS)
-    ]
+    directives = get_default_test_directives(test_patch)
 
     # For Django tests, remove extension + "tests/" prefix and convert slashes to dots (module referencing)
     if instance["repo"] == "django/django":

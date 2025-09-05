@@ -35,6 +35,8 @@ dependencies = [
     "tenacity",
     "tqdm",
     "unidiff",
+    "ytsaurus-client",
+    "ytsaurus-yson"
 ]
 
 [project.optional-dependencies]
